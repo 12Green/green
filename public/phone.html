@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+ <title>投屏控制</title>
+ <style>
+ * { margin: 0; padding: 0; box-sizing: border-box; }
+ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #fff; padding: 20px; }
+ .container { max-width: 400px; margin: 0 auto; }
+ h1 { text-align: center; margin-bottom: 30px; font-size: 24px; }
+ .code-input { display: flex; gap: 10px; margin-bottom: 30px; }
+ .code-input input { flex: 1; padding: 15px; font-size: 24px; text-align: center; letter-spacing: 8px; text-transform: uppercase; border: none; border-radius: 12px; background: rgba(255,255,255,0.9); color: #333; }
+ .code-input button { padding: 15px 20px; background: #00d4ff; border: none; border-radius: 12px; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
+ .status { text-align: center; padding: 10px; margin-bottom: 20px; border-radius: 8px; background: rgba(255,255,255,0.1); }
+ .status.connected { background: rgba(100,255,150,0.2); }
+ .status.error { background: rgba(255,100,100,0.2); }
+ .controls { display: none; }
+ .controls.active { display: block; }
+ .input-group { margin-bottom: 15px; }
+ .input-group label { display: block; margin-bottom: 8px; font-size: 14px; opacity: 0.8; }
+ .input-group textarea { width: 100%; height: 120px; padding: 15px; border: none; border-radius: 12px; background: rgba(255,255,255,0.9); color: #333; font-size: 16px; resize: none; }
+ .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+ .btn { flex: 1; min-width: 120px; padding: 15px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; }
+ .btn-primary { background: #00d4ff; color: #fff; }
+ .btn-danger { background: #ff6464; color: #fff; }
+ .media-buttons { display: flex; gap: 10px; margin-top: 20px; }
+ .media-btn { flex: 1; padding: 20px; border: none; border-radius: 12px; background: rgba(255,255,255,0.2); color: #fff; font-size: 14px; cursor: pointer; text-align: center; }
+ .media-btn .icon { font-size: 24px; display: block; margin-bottom: 5px; }
+ </style>
+</head>
+<body>
+ <div class="container">
+ <h1>投屏控制</h1>
+ <div class="code-input">
+ <input type="text" id="codeInput" placeholder="投屏码" maxlength="4">
+ <button onclick="connect()">连接</button>
+ </div>
+ <div class="status" id="status">请输入投屏码</div>
+ <div class="controls" id="controls">
+ <div class="input-group">
+ <label>发送文字</label>
+ <textarea id="textInput" placeholder="输入要显示的文字..."></textarea>
+ </div>
+ <div class="btn-group">
+ <button class="btn btn-primary" onclick="sendText()">发送文字</button>
+ <button class="btn btn-danger" onclick="clearScreen()">清空屏幕</button>
+ </div>
+ <div class="media-buttons">
+ <label class="media-btn">
+ <span class="icon">📷</span>发送图片
+ <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="sendImage(event)">
+ </label>
+ <label class="media-btn">
+ <span class="icon">🎬</span>发送视频
+ <input type="file" id="videoInput" accept="video/*" style="display:none" onchange="sendVideo(event)">
+ </label>
+ </div>
+ </div>
+ </div>
+ <script>
+ let ws;
+ const urlParams = new URLSearchParams(window.location.search);
+ const urlCode = urlParams.get('code');
+ if (urlCode) document.getElementById('codeInput').value = urlCode.toUpperCase();
+ 
+ function connect() {
+ const code = document.getElementById('codeInput').value.toUpperCase().trim();
+ if (!code || code.length !== 4) { alert('请输入4位投屏码'); return; }
+ ws = new WebSocket('wss://' + window.location.host + '?type=phone&code=' + code);
+ ws.onopen = () => {};
+ ws.onmessage = (event) => {
+ const msg = JSON.parse(event.data);
+ if (msg.type === 'connected') {
+ document.getElementById('controls').classList.add('active');
+ document.getElementById('status').className = 'status connected';
+ document.getElementById('status').textContent = '已连接';
+ } else if (msg.type === 'error') {
+ document.getElementById('status').className = 'status error';
+ document.getElementById('status').textContent = msg.message;
+ }
+ };
+ ws.onerror = () => { document.getElementById('status').className = 'status error'; document.getElementById('status').textContent = '连接失败'; };
+ }
+ function sendText() {
+ const text = document.getElementById('textInput').value.trim();
+ if (!text) { alert('请输入文字'); return; }
+ ws.send(JSON.stringify({ contentType: 'text', data: text }));
+ document.getElementById('textInput').value = '';
+ }
+ function sendImage(event) {
+ const file = event.target.files[0];
+ if (!file) return;
+ const reader = new FileReader();
+ reader.onload = (e) => { ws.send(JSON.stringify({ contentType: 'image', data: e.target.result })); };
+ reader.readAsDataURL(file);
+ event.target.value = '';
+ }
+ function sendVideo(event) {
+ const file = event.target.files[0];
+ if (!file || file.size > 5000000) { alert('视频不能超过5MB'); return; }
+ const reader = new FileReader();
+ reader.onload = (e) => { ws.send(JSON.stringify({ contentType: 'video', data: e.target.result })); };
+ reader.readAsDataURL(file);
+ event.target.value = '';
+ }
+ function clearScreen() {
+ ws.send(JSON.stringify({ contentType: 'clear' }));
+ }
+ if (urlCode) setTimeout(() => connect(), 500);
+ </script>
+</body>
+</html>
